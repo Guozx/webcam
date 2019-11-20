@@ -33,6 +33,27 @@
 12、
 Git支持多种协议，包括https，但通过ssh支持的原生git协议速度最快。
 
-远程库就叫 origin  
+
+13、untracked 就是新文件 但是从来没被add过
+
+14、（1）git diff：当工作区有改动，临时区为空，diff的对比是“工作区与最后一次commit提交的仓库的共同文件”；当工作区有改动，临时区不为空，diff对比的是“工作区与暂存区的共同文件”。
+
+（2）git diff --cached 或 git diff --staged：显示暂存区(已add但未commit文件)和最后一次commit(HEAD)之间的所有不相同文件的增删改(git diff --cached和git diff –staged相同作用)
+
+（3）git diff HEAD：显示工作目录(已track但未add文件)和暂存区(已add但未commit文件)与最后一次commit之间的的所有不相同文件的增删改。
+
+（3.1）git diff HEAD~X或git diff HEAD^^^…(后面有X个^符号，X为正整数):可以查看最近一次提交的版本与往过去时间线前数X个的版本之间的所有同(3)中定义文件之间的增删改。
+
+（4）git diff <分支名1> <分支名2> ：比较两个分支上最后 commit 的内容的差别
+
+(4.1)? git diff branch1 branch2 --stat??? 显示出所有有差异的文件(不详细,没有对比内容)
+
+(4.2)? git diff branch1 branch2??????????? ??显示出所有有差异的文件的详细差异(更详细)
+
+(4.3)? git diff branch1 branch2 具体文件路径 显示指定文件的详细差异(对比内容)
+
+我们有2个分支：master、dev(dev为develop的缩写,应是开发新功能的Feature分支)，查看这两个 branch 的区别，除了上面(abc)还有以下几种方式：
+
+(4.4) git log dev ^master 查看 dev中log有的commit，而 master中log没有的commit
 
 master是指master分支

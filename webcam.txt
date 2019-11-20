@@ -1,0 +1,280 @@
+1、嵌入式端rtmp推流，三种方法
+ffmpeg、gstreamer、librtmp
+2、流媒体可以适用网络传输并可以进行实时显示，rmvb或者mp4必须全部下载完毕才可以解码播放
+
+3、MJPEG-Streamer可以把MJPEG格式转换为流媒体进行传输
+
+4、getopt_long这个函数
+	int getopt_long(int argc, char * const argv[], const char *optstring, const struct option *longopts, int *longindex);
+	 (1)只有一个字符，不带冒号——只表示选项， 如-c?
+? ? 
+	 (2)一个字符，后接一个冒号——表示选项后面带一个参数，如-a 100
+? ? 
+	 (3)一个字符，后接两个冒号——表示选项后面带一个可选参数，即参数可有可无，如果带参数，则选项与参数直接不能有空格
+? ? ? ? 形式应该如-b200
+	
+	c = getopt_long(argc, argv, "hi:o:vb", long_options, NULL);
+	这个表示-h 不带参数 -i带参数 -o带参数  -v 不带参数 -b不带参数
+	当处理一个带参数的选项时，全局变量optarg会指向它的参数
+
+5、struct _globals {
+    int stop;
+
+    /* input plugin */
+    input in[MAX_INPUT_PLUGINS]; //这个里面存输入参数 就是-i后面跟的参数 也就是插件名
+    int incnt;
+
+    /* output plugin */
+    output out[MAX_OUTPUT_PLUGINS];
+    int outcnt;
+
+    /* pointer to control functions */
+    //int (*control)(int command, char *details);
+	};
+
+6、struct _input {
+    char *plugin;
+    char *name;
+    void *handle;
+
+    input_parameter param; // this holds the command line arguments
+
+    // input plugin parameters
+    struct _control *in_parameters;
+    int parametercount;
+
+
+    struct v4l2_jpegcompression jpegcomp;
+
+    /* signal fresh frames */
+    pthread_mutex_t db;
+    pthread_cond_t  db_update;
+
+    /* global JPG frame, this is more or less the "database" */
+    unsigned char *buf;
+    int size;
+
+    /* v4l2_buffer timestamp */
+    struct timeval timestamp;
+
+    input_format *in_formats;
+    int formatCount;
+    int currentFormat; // holds the current format number
+    
+    void *context; // private data for the plugin
+
+    int (*init)(input_parameter *, int id);
+    int (*stop)(int);
+    int (*run)(int);
+    int (*cmd)(int plugin, unsigned int control_id, unsigned int group, int value, char *value_str);
+};
+
+
+----------------------------------------------------------------
+typedef struct {
+    int id;
+    globals *pglobal;
+    pthread_t threadID;
+    pthread_mutex_t controls_mutex;
+    struct vdIn *videoIn;
+    context_settings *init_settings;
+} context;
+
+
+-----------------------------------------------------------------------
+
+	struct vdIn {
+    int fd;
+    char *videodevice;
+    char *status;
+    char *pictName;
+    struct v4l2_capability cap;
+    struct v4l2_format fmt;
+    struct v4l2_buffer buf;
+    struct v4l2_requestbuffers rb;
+    void *mem[NB_BUFFER];
+    unsigned char *tmpbuffer;
+    unsigned char *framebuffer;
+    streaming_state streamingState;
+    int grabmethod;
+    int width;
+    int height;
+    int fps;
+    int formatIn;
+    int formatOut;
+    int framesizeIn;
+    int signalquit;
+    int toggleAvi;
+    int getPict;
+    int rawFrameCapture;
+    /* raw frame capture */
+    unsigned int fileCounter;
+    /* raw frame stream capture */
+    unsigned int rfsFramesWritten;
+    unsigned int rfsBytesWritten;
+    /* raw stream capture */
+    FILE *captureFile;
+    unsigned int framesWritten;
+    unsigned int bytesWritten;
+    int framecount;
+    int recordstart;
+    int recordtime;
+    uint32_t tmpbytesused;
+    struct timeval tmptimestamp;
+    v4l2_std_id vstd;
+    unsigned long frame_period_time; // in ms
+    unsigned char soft_framedrop;
+    unsigned int dv_timings;
+};
+
+-----------------------------------------------------------------------------------------
+
+
+7、在fork函数执行完毕后，如果创建新进程成功，则出现两个进程，一个是子进程，一个是父进程。在子进程中，fork函数返回0，在父进程中，fork返回新创建子进程的进程ID。我们可以通过fork返回的值来判断当前进程是子进程还是父进程。
+    1）在父进程中，fork返回新创建子进程的进程ID；
+    2）在子进程中，fork返回0；
+    3）如果出现错误，fork返回一个负值；
+
+8、编译需要的#include <linux/videodev2.h> 这个文件是在/usr/include/linux/videodev2.h
+
+9、/usr/include/linux是用来编译当前系统的程序的；
+/usr/src/linux/include/linux/是用来编译内核的，
+
+要使用/usr/src/linux/include/linux的头文件，
+可以用gcc -I /usr/src/linux-x.x.x/include/
+
+一个是用户态下的搜索路径，一个是内核模块需要的头文件搜索路径，用的地方都不一样
+/usr/include / linux标头是编译系统标准C库时使用的标头.它们归C库包装所有,并与标准C库保持同步更新.存在它们以提供内核的用户空间接口
+
+10、make install 就是把so文件放到/usr/local/share/下面
+
+11、signal(SIGPIPE, SIG_IGN);
+	这个是捕捉到SIGPIPE这个信号，然后交给SIG_IGN这个信号处理函数去执行    SIG_IGN忽略信号
+	产生SIGPIPE信号的场景：TCP是全双工的，假如A和B，B端close了他所负责的那条链路，如果A端还在write给B端发数据，B端就会发送RST报文给A端，如果A收到了RST之后还在继续发送调用write，那么就会产生SIGPIPE信号，这个信号的默认处理方式是进程退出
+	原型：signal(int signum, sighandler_t handler)
+12、signal(SIGINT, signal_handler	由Interrupt Key产生，通常是CTRL+C或者DELETE。发送给所有ForeGround Group的进程
+
+13、	
+	pthread_mutex_t db;
+	条件变量 ？条件变量的用法？
+    	pthread_cond_t  db_update;   
+	销毁条件变量，只有在没有线程在该条件变量上等待时，才可以注销条件变量，否则会返回EBUSY
+	pthread_cond_destroy(&global.in[i].db_update);
+        pthread_mutex_destroy(&global.in[i].db);
+
+	条件变量是线程同步的一种手段。条件变量用来自动阻塞一个线程，直到条件(predicate)满足被触发为止。通常情况下条件变量和互斥锁同时使	用。
+
+	条件变量使我们可以睡眠等待某种条件出现。条件变量是利用线程间共享的全局变量进行同步的一种机制，主要包括两个动作：一个/多个线程等	待"条件变量的条件成立"而挂起；另一个线程使"条件成立"信号
+
+14、	初始化同步信号量和互斥锁
+	pthread_mutex_init(&global.in[i].db, NULL) != 0   
+	pthread_cond_init(&global.in[i].db_update, NULL) != 0
+
+15、	命令行：
+	export LD_LIBRARY_PATH=.
+	./mjpg_streamer -i "./input_uvc.so -y -d /dev/video1" -o "./output_http.so -p 1080 -w ./www"
+
+16、 global.in[i].init = dlsym(global.in[i].handle, "input_init");
+	global.in[i].stop = dlsym(global.in[i].handle, "input_stop");
+	global.in[i].run = dlsym(global.in[i].handle, "input_run");
+	global.in[i].cmd = dlsym(global.in[i].handle, "input_cmd");
+
+	global.in[i].init(&global.in[i].param, i
+--------------------------------------------------------------------------
+	global.out[i].init = dlsym(global.out[i].handle, "output_init");
+	global.out[i].stop = dlsym(global.out[i].handle, "output_stop");
+ 	global.out[i].run = dlsym(global.out[i].handle, "output_run");
+	global.out[i].cmd = dlsym(global.out[i].handle, "output_cmd");
+	global.out[i].init(&global.out[i].param, i)
+
+17、pause()
+	函数使调用进程挂起直至捕捉到一个信号
+
+18、 for(i = 0; i < global.incnt; i++) 
+	{global.in[i].run(i)}
+     for(i = 0; i < global.outcnt; i++)
+	{global.out[i].run(global.out[i].param.id)}
+
+19、input_uvc.c
+	pthread_mutex_t controls_mutex
+	pthread_mutex_init(&controls_mutex, NULL)
+
+20、calloc malloc 区别？
+	malloc()函数分配的内存空间原来没有被使用过，则其中的每一位可能都是0;反之,如果这部分内存曾经被分配过,则其中可能遗留有各种各样的数据。
+	calloc()会将所分配的内存空间中的每一位都初始化为零,也就是说,如果你是为字符类型或整数类型的元素分配内存,那麽这些元素将保证会被初始化为0;如果你是为指针类型的元素分配内存,那麽这些元素通常会被初始化为空指针;如果你为实型数据分配内存,则这些元素会被初始化为浮点型的零
+
+21、fd = open()
+	只要有一个权限被禁止则返回-1
+	open函数返回的文件描述符fd一定是未使用的最小的文件描述符，那么如果0没有使用，那么我们open的时候，首先就会获取到fd=0的情况。默认情况下，0,1,2这三个句柄对应的是标准输入，标准输出，标准错误，系统进程默认会打开0，1，2这三个文件描述符，而且指向了键盘和显示器的设备文件
+
+22、initDynCtrls 调整摄像头
+	UVCIOC_CTRL_MAP - 将UVC控件映射到V4L2控件----？？ 这样可以通过V4L2直接控制UVC
+	这个属于usb video class uvc驱动里面的
+
+
+23、input_init
+	this->fd = open(this->videodevice, O_RDWR)
+	//ret = ioctl(this->fd, VIDIOC_QUERYCAP, &cap);     //判断摄像头能力
+	init_settings();
+	pthread_mutex_init(&pctx->controls_mutex, NULL)
+	init_videoIn(pctx->videoIn, dev, width, height, fps, format, 1, pctx->pglobal, id, tvnorm)//videoIn是一个关键结构体	
+		init_v4l2(vd)
+			vd->fd = OPEN_VIDEO(vd->videodevice, O_RDWR
+			xioctl(vd->fd, VIDIOC_QUERYCAP, &vd->cap);//填充 v4l2_capability结构体
+			ioctl(vd->fd, VIDIOC_S_STD, &vd->vstd）
+			video_set_dv_timings(vd) //视频时序标准，就是sensor采样，行，场之类的
+			ioctl(vd->fd, VIDIOC_SUBSCRIBE_EVENT, &sub)  //这个是订阅 事件件提供了一种通用的方式去传递事件到用户空间？？
+			ret = xioctl(vd->fd, VIDIOC_S_PARM, setfps);
+			xioctl(vd->fd, VIDIOC_REQBUFS, &vd->rb);//驱动开始分配NB_BUFFER个buffer  v4l2_requestbuffers结构体
+			for(i = 0; i < NB_BUFFER; i++)
+				ret = xioctl(vd->fd, VIDIOC_QUERYBUF, &vd->buf); //v4l2_buffer结构体
+				vd->mem[i] = mmap(0 /* start anywhere */ ,vd->buf.length, PROT_READ | PROT_WRITE, MAP_SHARED, vd->fd,vd->buf.m.offset);   //每一个buffer对应的map到vd->mem[i]
+			for(i = 0; i < NB_BUFFER; ++i) 
+				ret = xioctl(vd->fd, VIDIOC_QBUF, &vd->buf); //把buf放入队列
+		xioctl(vd->fd, VIDIOC_ENUMINPUT,  &in_struct) //获取输入设备类型   比如usb摄像头
+		init_framebuffer
+			vd->framesizeIn = (vd->width * vd->height << 1);   //行*列*2
+			vd->framebuffer =(unsigned char *) calloc(1, (size_t) vd->width * (vd->height + 8) * 2);  //用于抓拍吗？ 
+	initDynCtrls(this->fd);   //uvc驱动到v4l2驱动的映射 ？？
+		xioctl(fd, UVCIOC_CTRL_ADD, &xu_ctrls[i])
+	enumerateControls(pctx->videoIn, pctx->pglobal, id); // enumerate V4L2 controls after UVC extended mapping？？
+	---------------------------------------------------------------------------------------------------------------------------
+    input_run
+	//int pthread_create(pthread_t  *restrict tidp, const  pthread_attr_t  *restrict_attr,   void*（*start_rtn)(void*),   void   *restrict   arg);
+            //第一个参数为指向线程标识符的指针。
+
+ 	　　//第二个参数用来设置线程属性。
+
+	　　//第三个参数是线程运行函数的地址。
+
+	　　//最后一个参数是运行函数的参数。
+	pthread_create(&cam, 0, cam_thread, NULL);
+	//pthread_detach()即主线程与子线程分离，子线程结束后，资源自动回收。
+	//pthread_join()即是子线程合入主线程，主线程阻塞等待子线程结束，然后回收子线程资源。
+		cam_thread()  //this thread worker grabs a frame and copies it to the global buffer
+			pthread_cleanup_push(cam_cleanup, in);//设置线程退出时候的处理函数cam_cleanup
+				V4L_INT_OPT
+					input_cmd
+						v4l2SetControl(pctx->videoIn, control_id, value, plugin_number, pglobal);
+							//这个涉及struct v4l2_control 这个结构体，配置了
+							//control_s.id = V4L2_CID_SHARPNESS
+							//V4L2_CID_CONTRAST,V4L2_CID_SATURATION,V4L2_CID_BACKLIGHT_COMPENSATION
+							//V4L2_CID_ROTATE,V4L2_CID_HFLIP,V4L2_CID_VFLIP,V4L2_CID_AUTOBRIGHTNESS
+					//V4L2_CID_BRIGHTNESS,V4L2_CID_AUTO_WHITE_BALANCE,V4L2_CID_WHITE_BALANCE_TEMPERATURE
+					//V4L2_CID_EXPOSURE_AUTO,V4L2_CID_EXPOSURE_ABSOLUTE
+							//ret = ioctl(Handle, VIDIOC_G_CTRL, &ctrl);根据ctrl.id获取增益，或者曝光值驱动会存到ctrl.value
+							//ret = ioctl(Handle, VIDIOC_S_CTRL, &ctrl);设置ctrl.value
+							//获取范围
+							//struct v4l2_queryctrl Setting;
+							//Setting.id = V4L2_CID_GAIN;
+							//ret = ioctl(Handle, VIDIOC_QUERYCTRL, &Setting);
+ 							control_s.id = control_id;
+                					control_s.value = value;
+							xioctl(vd->fd, VIDIOC_S_CTRL, &control_s)	//？？这个值在哪传进去的
+							video_enable(pcontext->videoIn)
+								xioctl(vd->fd, VIDIOC_STREAMON, &type);
+	int pthread_detach(pthread_t tid);    //？
+
+
+
+24、calloc配free

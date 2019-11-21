@@ -57,3 +57,13 @@ Git支持多种协议，包括https，但通过ssh支持的原生git协议速度最快。
 (4.4) git log dev ^master 查看 dev中log有的commit，而 master中log没有的commit
 
 master是指master分支
+
+
+15、在本地建仓库同步远程仓库 第一次本地没有仓库要用git clone
+	1、本地建好文件夹，然后git init
+	2、git clone git@github.com: xxxxxxxx
+	3、这个时候git remote -v 应该就可以看到本地仓库关联上了远程分支 origin
+
+16、如果要添加本地分支关联到不同的远程分支，可以用
+	git remote add xxx（远程仓库的名字） git@xxxxxxxxxxx（远程仓库的地址）
+	git push -f xxx（远程仓库的名字）master

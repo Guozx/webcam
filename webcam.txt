@@ -175,11 +175,12 @@ typedef struct {
 	./mjpg_streamer -i "./input_uvc.so -y -d /dev/video1" -o "./output_http.so -p 1080 -w ./www"
 
 16、 global.in[i].init = dlsym(global.in[i].handle, "input_init");
+	if(global.in[i].init == NULL)  //注意这里和下面
 	global.in[i].stop = dlsym(global.in[i].handle, "input_stop");
 	global.in[i].run = dlsym(global.in[i].handle, "input_run");
 	global.in[i].cmd = dlsym(global.in[i].handle, "input_cmd");
 
-	global.in[i].init(&global.in[i].param, i
+	global.in[i].init(&global.in[i].param, i)  //注意这里和上面，这里函数名后面不跟括号，表示函数指针，后面跟一个括号，才表示是执行函数的内容
 --------------------------------------------------------------------------
 	global.out[i].init = dlsym(global.out[i].handle, "output_init");
 	global.out[i].stop = dlsym(global.out[i].handle, "output_stop");
@@ -212,7 +213,8 @@ typedef struct {
 	这个属于usb video class uvc驱动里面的
 
 
-23、input_init
+23、input_uvc.c
+     input_init
 	this->fd = open(this->videodevice, O_RDWR)
 	//ret = ioctl(this->fd, VIDIOC_QUERYCAP, &cap);     //判断摄像头能力
 	init_settings();
@@ -248,7 +250,8 @@ typedef struct {
 	　　//第三个参数是线程运行函数的地址。
 
 	　　//最后一个参数是运行函数的参数。
-	pthread_create(&cam, 0, cam_thread, NULL);
+	
+	pthread_create(&(pctx->threadID), NULL, cam_thread, in);
 	//pthread_detach()即主线程与子线程分离，子线程结束后，资源自动回收。
 	//pthread_join()即是子线程合入主线程，主线程阻塞等待子线程结束，然后回收子线程资源。
 		cam_thread()  //this thread worker grabs a frame and copies it to the global buffer
@@ -273,8 +276,14 @@ typedef struct {
 							xioctl(vd->fd, VIDIOC_S_CTRL, &control_s)	//？？这个值在哪传进去的
 							video_enable(pcontext->videoIn)
 								xioctl(vd->fd, VIDIOC_STREAMON, &type);
-	int pthread_detach(pthread_t tid);    //？
+	pthread_detach(pctx->threadID);//子线程和主线程分离，分开运行
 
 
 
 24、calloc配free
+
+25、主流程
+	global.in[i].init(&global.in[i].param, i)
+	global.out[i].init(&global.out[i].param, i)
+	global.in[i].run(i)
+	global.out[i].run(global.out[i].param.id)

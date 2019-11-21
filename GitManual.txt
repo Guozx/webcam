@@ -67,3 +67,15 @@ master是指master分支
 16、如果要添加本地分支关联到不同的远程分支，可以用
 	git remote add xxx（远程仓库的名字） git@xxxxxxxxxxx（远程仓库的地址）
 	git push -f xxx（远程仓库的名字）master
+
+
+17、git merge的用法
+	git merge是把merge后面跟的参数merge到head指针指的地方，一般就是master，除非checkout切换到了别的分支
+	本地拉分支 git checkout -b xxx
+	提交到远程分支 git add . /// git commit -m  // git push -u origin xxx
+	切换回master  git checkout master
+	把本地分支合并到master   git merge xxx
+	把本地的master同步到远程 git push origin master
+
+18、git fetch下来是fetch到了工作区
+	这个时候如果想要把远程的合并到本地可以 git merge fetch_head

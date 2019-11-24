@@ -251,32 +251,78 @@ typedef struct {
 
 	　　//最后一个参数是运行函数的参数。
 	
-	pthread_create(&(pctx->threadID), NULL, cam_thread, in);
+	pthread_create(&(pctx->threadID), NULL, cam_thread, in);//最后一个参数表示创建线程的函数参数，入参
+	//这个线程的创建到了内核态里面有点类似内核态进程的创建，fork，exec之后，原来的父进程按他原来的走，新创建的子进程也走他自己的
 	//pthread_detach()即主线程与子线程分离，子线程结束后，资源自动回收。
 	//pthread_join()即是子线程合入主线程，主线程阻塞等待子线程结束，然后回收子线程资源。
 		cam_thread()  //this thread worker grabs a frame and copies it to the global buffer
+			input * in = (input*)arg;
+			context *pcontext = (context*)in->context;
+			context_settings *settings = pcontext->init_settings;  //pcontext代表线程的一些配置，线程ID之类的，这个里面也包含初始的配置参数，就是后面的曝光，增益之类的这些参数
 			pthread_cleanup_push(cam_cleanup, in);//设置线程退出时候的处理函数cam_cleanup
 				V4L_INT_OPT
-					input_cmd
-						v4l2SetControl(pctx->videoIn, control_id, value, plugin_number, pglobal);
+					input_cmd()
+						v4l2SetControl(pctx->videoIn, control_id, value, plugin_number, pglobal);	
 							//这个涉及struct v4l2_control 这个结构体，配置了
+							xioctl(vd->fd, VIDIOC_S_CTRL, &control_s)
 							//control_s.id = V4L2_CID_SHARPNESS
-							//V4L2_CID_CONTRAST,V4L2_CID_SATURATION,V4L2_CID_BACKLIGHT_COMPENSATION
-							//V4L2_CID_ROTATE,V4L2_CID_HFLIP,V4L2_CID_VFLIP,V4L2_CID_AUTOBRIGHTNESS
-					//V4L2_CID_BRIGHTNESS,V4L2_CID_AUTO_WHITE_BALANCE,V4L2_CID_WHITE_BALANCE_TEMPERATURE
-					//V4L2_CID_EXPOSURE_AUTO,V4L2_CID_EXPOSURE_ABSOLUTE
-							//ret = ioctl(Handle, VIDIOC_G_CTRL, &ctrl);根据ctrl.id获取增益，或者曝光值驱动会存到ctrl.value
-							//ret = ioctl(Handle, VIDIOC_S_CTRL, &ctrl);设置ctrl.value
-							//获取范围
-							//struct v4l2_queryctrl Setting;
-							//Setting.id = V4L2_CID_GAIN;
-							//ret = ioctl(Handle, VIDIOC_QUERYCTRL, &Setting);
- 							control_s.id = control_id;
-                					control_s.value = value;
-							xioctl(vd->fd, VIDIOC_S_CTRL, &control_s)	//？？这个值在哪传进去的
-							video_enable(pcontext->videoIn)
-								xioctl(vd->fd, VIDIOC_STREAMON, &type);
-	pthread_detach(pctx->threadID);//子线程和主线程分离，分开运行
+				//V4L2_CID_CONTRAST,V4L2_CID_SATURATION,V4L2_CID_BACKLIGHT_COMPENSATION
+				//V4L2_CID_ROTATE,V4L2_CID_HFLIP,V4L2_CID_VFLIP,V4L2_CID_AUTOBRIGHTNESS
+				//V4L2_CID_BRIGHTNESS,V4L2_CID_AUTO_WHITE_BALANCE,V4L2_CID_WHITE_BALANCE_TEMPERATURE
+				//V4L2_CID_EXPOSURE_AUTO,V4L2_CID_EXPOSURE_ABSOLUTE
+				//ret = ioctl(Handle, VIDIOC_G_CTRL, &ctrl);根据ctrl.id获取增益，或者曝光值驱动会存到ctrl.value
+				//ret = ioctl(Handle, VIDIOC_S_CTRL, &ctrl);设置ctrl.value
+				//获取范围
+				//struct v4l2_queryctrl Setting;
+				//Setting.id = V4L2_CID_GAIN;
+				//ret = ioctl(Handle, VIDIOC_QUERYCTRL, &Setting);
+ 				control_s.id = control_id;
+                		control_s.value = value;
+				xioctl(vd->fd, VIDIOC_S_CTRL, &control_s)	//？？这个值在哪传进去的
+				free(settings);
+				settings = NULL;
+				pcontext->init_settings = NULL; //注意这一串free后面的操作，free完之后，把这个指针弄成null
+				if (softfps > 0) {
+				pcontext->videoIn->soft_framedrop = 1;
+				pcontext->videoIn->frame_period_time = 1000/softfps;
+				}
+				video_enable(pcontext->videoIn)
+						xioctl(vd->fd, VIDIOC_STREAMON, &type);
+				//signal_handler  global.stop = 1; 收到ctrl c的命令之后就会把stop置位
+				//注意这个线程里面这里有个循环，会一直卡在这里，等待接收命令
+				 while(!pglobal->stop) {
+					while(pcontext->videoIn->streamingState == STREAMING_PAUSED) {
+						usleep(1); // maybe not the best way so FIXME
+					}
+				FD_ZERO(&rd_fds);
+				FD_SET(pcontext->videoIn->fd, &rd_fds);
+
+				FD_ZERO(&ex_fds);
+				FD_SET(pcontext->videoIn->fd, &ex_fds);
+
+				FD_ZERO(&wr_fds);
+				FD_SET(pcontext->videoIn->fd, &wr_fds);
+				select(pcontext->videoIn->fd + 1, &rd_fds, &wr_fds, &ex_fds, &tv);//select函数监听fd接收状态，写入状态，错误状态，设置timeout时间
+					else if (sel == 0）如果超时
+						setResolution(pcontext->videoIn, pcontext->videoIn->width, pcontext->videoIn->height)//？？？？？？？
+				FD_ISSET(pcontext->videoIn->fd, &rd_fds
+					uvcGrab(pcontext->videoIn)//抓取一帧照片
+						xioctl(vd->fd, VIDIOC_DQBUF, &vd->buf); //dequeue buffer  VIDIOC_DQBUF 命令向驱动获取已经存放有视频数据的缓存  驱动出队
+						memset(&vd->buf, 0, sizeof(struct v4l2_buffer));
+						vd->buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+						vd->buf.memory = V4L2_MEMORY_MMAP;
+							case V4L2_PIX_FMT_MJPEG:
+								memcpy(vd->tmpbuffer, vd->mem[vd->buf.index], vd->buf.bytesused);//vd->mem是内存映射到了vd->buf,截图的时候把这段内存直接拷贝到tmpbuffer
+								vd->tmptimestamp = vd->buf.timestamp; //这个v4l2里面的buf还自带tmestamp？？？
+						xioctl(vd->fd, VIDIOC_QBUF, &vd->buf);//requeue buffer   VIDIOC_QBUF 命令向驱动传递应用程序已经处理完的缓存，即将缓存加入空闲可捕获视频的队列
+						pthread_mutex_lock(&pglobal->in[pcontext->id].db); //每一个input结构体都有一把线程锁
+						//compress_image_to_jpeg  如果摄像头是YUV格式的话，下面进行YUV到JPEG的转换
+						pglobal->in[pcontext->id].size =memcpy_picture(pglobal->in[pcontext->id].buf, pcontext->videoIn->tmpbuffer, pcontext->videoIn->tmpbytesused);//然后从tmpbuffer又拷贝到input.buf 这里面可能涉及到霍夫曼变化？？
+						pglobal->in[pcontext->id].timestamp = pcontext->videoIn->tmptimestamp;
+						pthread_cond_broadcast(&pglobal->in[pcontext->id].db_update);   //这个好像是要唤醒其他阻塞线程？？？？？解锁所有包含条件变量db_update的线程，感觉像是http的线程
+						pthread_mutex_unlock(&pglobal->in[pcontext->id].db);
+    ret = xioctl(vd->fd, VIDIOC_DQBUF, &vd->buf);				
+	pthread_detach(pctx->threadID);//子线程和主线程分离，分开运行，有点像子进程和父进程fork之后，父进程还是跑自己的，子进程也继续跑
 
 
 
@@ -287,3 +333,25 @@ typedef struct {
 	global.out[i].init(&global.out[i].param, i)
 	global.in[i].run(i)
 	global.out[i].run(global.out[i].param.id)
+	
+26、
+struct v4l2_buffer {
+	__u32                   index;
+	enum v4l2_buf_type      type;
+	__u32                   bytesused;
+	__u32                   flags;
+	enum v4l2_field         field;
+	struct timeval          timestamp;
+	struct v4l2_timecode    timecode;
+	__u32                   sequence;
+ 
+	/* memory location */
+	enum v4l2_memory        memory;
+	union {
+	        __u32           offset;
+	        unsigned long   userptr;
+	} m;
+	__u32                   length;
+	__u32                   input;
+	__u32                   reserved;
+};

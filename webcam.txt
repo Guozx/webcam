@@ -129,6 +129,26 @@ typedef struct {
 
 -----------------------------------------------------------------------------------------
 
+	/* structure to store variables/functions for output plugin */
+	typedef struct _output output;
+	struct _output {
+		char *plugin;
+		char *name;
+		void *handle;
+		output_parameter param;
+
+		// input plugin parameters
+		struct _control *out_parameters;
+		int parametercount;
+
+		int (*init)(output_parameter *param, int id);
+		int (*stop)(int);
+		int (*run)(int);
+		int (*cmd)(int plugin, unsigned int control_id, unsigned int group, int value, char *value_str);
+};
+
+------------------------------------------------------------------------------------------------------
+
 
 7、在fork函数执行完毕后，如果创建新进程成功，则出现两个进程，一个是子进程，一个是父进程。在子进程中，fork函数返回0，在父进程中，fork返回新创建子进程的进程ID。我们可以通过fork返回的值来判断当前进程是子进程还是父进程。
     1）在父进程中，fork返回新创建子进程的进程ID；
@@ -354,4 +374,101 @@ struct v4l2_buffer {
 	__u32                   length;
 	__u32                   input;
 	__u32                   reserved;
+};
+
+
+27、output_http.c
+	output_init()
+		port = htons(8080);  //进行主机序和网络序转换
+		port = htons(atoi(optarg));//atoi转换遇到的字符串，只保留数字
+		servers[param->id].id = param->id;
+		servers[param->id].pglobal = param->global;
+		servers[param->id].conf.port = port;
+		servers[param->id].conf.hostname = hostname;
+		servers[param->id].conf.credentials = credentials;
+		servers[param->id].conf.www_folder = www_folder;
+		servers[param->id].conf.nocommands = nocommands;
+		
+28、By default, everything will be compiled in "release" mode. If you wish to compile with debugging symbols enabled, you can do this
+	cd mjpg-streamer-experimental
+	make distclean
+	make CMAKE_BUILD_TYPE=Debug
+	sudo make install
+	
+29、http.h里面的context   \\每一个server的线程的context
+	typedef struct {
+    int sd[MAX_SD_LEN];
+    int sd_len;
+    int id;
+    globals *pglobal;
+    pthread_t threadID;
+    config conf;
+	} context;
+	
+	/* store configuration for each server instance */
+	typedef struct {
+    int port;
+    char *hostname;
+    char *credentials;
+    char *www_folder;
+    char nocommands;
+	} config;
+---------------------------------------------
+	v4l2uvc.h里面的context	
+	typedef struct {
+    int id;
+    globals *pglobal;
+    pthread_t threadID;
+    pthread_mutex_t controls_mutex;
+    struct vdIn *videoIn;
+    context_settings *init_settings;
+	} context;
+
+	
+30、output_http.c
+	Description.: Open a TCP socket and wait for clients to connect. If clients
+              connect, start a new thread for each accepted connection.
+	Input Value.: arg is a pointer to the globals struct
+	Return Value: always NULL, will only return on exit
+	
+----------------------------------------------------------------------------------------
+
+
+	output_run(int id)
+		pthread_create(&(servers[id].threadID), NULL, server_thread, &(servers[id]));
+			server_thread(void *arg)
+				context *pcontext = arg;// context servers[MAX_OUTPUT_PLUGINS];
+				pthread_cleanup_push(server_cleanup, pcontext);
+				hints.ai_family = PF_UNSPEC;
+				hints.ai_flags = AI_PASSIVE;
+				hints.ai_socktype = SOCK_STREAM
+				getaddrinfo(pcontext->conf.hostname, name, &hints, &aip)  ///* 将主机名和服务名映射到一个地址 */	
+				pthread_mutex_init(&client_infos.mutex, NULL)
+				bind(pcontext->sd[i], aip2->ai_addr, aip2->ai_addrlen)  //将一个socketfd绑定到一个socket adress结构，这个结构包括 地址，端口,IP信息
+				listen(pcontext->sd[i], 10)    //监听的最大连接个数 10
+				while(!pglobal->stop){				 
+				do{
+				FD_ZERO(&selectfds);
+				err = select(max_fds + 1, &selectfds, NULL, NULL, NULL);
+				}while(err <= 0); //这个是通过select 阻塞式等待嘛？
+				pcfd->fd = accept(pcontext->sd[i], (struct sockaddr *)&client_addr, &addr_len); //这个应该是返回的客户端的socketfd
+                pcfd->pc = pcontext;
+				pcfd->client = add_client(name);
+					pthread_mutex_lock(&client_infos.mutex);    //锁放到要访问的数据类型结构体里面
+				pthread_create(&client, NULL, &client_thread, pcfd)
+				pthread_detach(client);
+				}
+				pthread_cleanup_pop(1);
+		pthread_detach(servers[id].threadID);
+
+31、struct addrinfo
+{
+  int ai_flags;                 /* Input flags.  */
+  int ai_family;                /* Protocol family for socket.  */
+  int ai_socktype;              /* Socket type.  */
+  int ai_protocol;              /* Protocol for socket.  */  socket协议类型，TCP,UDP,IP协议
+  socklen_t ai_addrlen;         /* Length of socket address.  */
+  struct sockaddr *ai_addr;     /* Socket address for socket.  */
+  char *ai_canonname;           /* Canonical name for service location.  */
+  struct addrinfo *ai_next;     /* Pointer to next in list.  */
 };

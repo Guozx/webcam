@@ -449,13 +449,38 @@ struct v4l2_buffer {
 				while(!pglobal->stop){				 
 				do{
 				FD_ZERO(&selectfds);
-				err = select(max_fds + 1, &selectfds, NULL, NULL, NULL);
-				}while(err <= 0); //这个是通过select 阻塞式等待嘛？
-				pcfd->fd = accept(pcontext->sd[i], (struct sockaddr *)&client_addr, &addr_len); //这个应该是返回的客户端的socketfd
+				err = select(max_fds + 1, &selectfds, NULL, NULL, NULL); // 这个select函数阻塞监听，直到selectfds里面的某个文件描述符发生变化
+				//这个设置的selectfds是通过FD_SET(pcontext->sd[i], &selectfds);把他添加到这个selectfds里面的，最后一个参数是NULL，表示select处于阻塞状态，一定等到监视集合里面某个文件发生了变化
+				}while(err <= 0); //这个是通过select 阻塞式等待嘛？返回0表示等待超时
+				pcfd->fd = accept(pcontext->sd[i], (struct sockaddr *)&client_addr, &addr_len); //这个应该是返回的客户端的socketfd，即是 client_addr
                 pcfd->pc = pcontext;
-				pcfd->client = add_client(name);
+				getnameinfo((struct sockaddr *)&client_addr, addr_len, name, sizeof(name), NULL, 0, NI_NUMERICHOST)//根据接入的客户端的sockaddr 转换出client的name
+				pcfd->client = add_client(name);//这个name传到这个函数里面就是address，/* client_info *add_client(char *address) */
 					pthread_mutex_lock(&client_infos.mutex);    //锁放到要访问的数据类型结构体里面
+					strcmp(client_infos.infos[i]->address, address)
+					pthread_mutex_unlock(&client_infos.mutex);			
 				pthread_create(&client, NULL, &client_thread, pcfd)
+					client_thread()//参数就是pcfd  accept之后建立的新的socket的fd就存在pcfd->fd里面了，后面的读取数据就是读写这个fd
+						memcpy(&lcfd, arg, sizeof(cfd));
+						free(arg)   //注意这里可以直接free个指针，前面并没有malloc，只是说这个指针指向的一块地方不用了
+						init_iobuffer(&iobuf);
+							memset(iobuf->buffer, 0, sizeof(iobuf->buffer));
+							iobuf->level = 0;
+						init_request(&req);
+							req->type        = A_UNKNOWN;
+							req->parameter   = NULL;
+							req->client      = NULL;
+							req->credentials = NULL;
+						memset(buffer, 0, sizeof(buffer));
+						cnt = _readline(lcfd.fd, &iobuf, buffer, sizeof(buffer) - 1, 5)  //最后就把数存到了buffer里面
+							_read(fd, iobuf, &c, 1, timeout)
+								FD_ZERO(&fds);
+								FD_SET(fd, &fds);
+								rc = select(fd + 1, &fds, NULL, NULL, &tv)
+								init_iobuffer(iobuf);
+								iobuf->level = read(fd, &iobuf->buffer, IO_BUFFER) //前面用select了，并且socket连接已经建立，这里直接read
+								memmove(iobuf->buffer + (IO_BUFFER - iobuf->level), iobuf->buffer, iobuf->level);//克服拷贝位置重叠的问题，对齐到buffer数组末尾
+						// http://192.168.1.17:8080/?action=stream
 				pthread_detach(client);
 				}
 				pthread_cleanup_pop(1);
@@ -472,3 +497,69 @@ struct v4l2_buffer {
   char *ai_canonname;           /* Canonical name for service location.  */
   struct addrinfo *ai_next;     /* Pointer to next in list.  */
 };
+
+
+32、client_thread 客户进程中的关键结构体
+		/* the iobuffer structure is used to read from the HTTP-client */
+	typedef struct {
+    int level;              /* how full is the buffer */  注意这个注释
+    char buffer[IO_BUFFER]; /* the data */
+	} iobuffer
+	
+-----------------------------------------------------------------------------------------
+	typedef struct {
+		answer_t type;
+		char *parameter;
+		char *client;
+		char *credentials;
+		char *query_string;
+	} request;
+	
+33、
+HTTP请求响应步骤
+1、建立TCP连接
+客户端(一般指浏览器)会以一个随机端口(1024<端口号<65535)向服务器的Web程序的80端口发起TCP的连接请求。这个连接请求到达服务器后，进入到网卡，然后是进入内核的TCP/IP协议栈，最终到达Web程序，建立TCP\IP的连接。这个过程被称为3次握手。
+2、发送HTTP请求
+通过TCP套接字，客户端向Web服务器发送一个文本的请求报文，一个请求报文由请求行、请求头部、空行、请求正文构成。
+3、服务器接受请求并返回HTTP响应
+Web服务器解析请求，定位请求资源。服务器将资源复本写道TCP套接字，由客户端读取。一个响应由状态行、响应头部、空行、响应数据组成。
+4、释放TCP连接
+若connection模式为close，则服务器主动关闭TCP连接，客户端被动关闭连接，这个过程称之为4次挥手；若客户端模式为keepalive，则该连接会保持一段时间。
+5、客户端浏览器解析HTML内容
+客户端首先解析响应报文中的状态行，查看请求是否成功，然后解析每个响应头部。最后读取响应数据并格式化在浏览器中显示。
+
+34、
+在浏览器地址栏输入一个网址，会经历怎样的流程呢？
+1、浏览器向DNS服务器请求解析URL中的域名对应的IP地址。
+2、根据IP地址和默认端口，和服务器建立TCP连接。
+3、浏览器发出HTTP请求，该请求报文作为TCP三次握手的第三个报文的数据发送给服务器。
+4、服务器对浏览器做出响应，并把html文本发送给浏览器。
+5、释放TCP连接
+6、浏览器解析HTML内容，并对页面进行渲染呈现给用户
+
+
+35、accept()的返回值
+accept函数返回值成功时返回非负值，失败时返回-1
+
+accept函数接受一个客户端请求后会返回一个新的SOCKFD值，当有不同的客户端同时有不同请求时，会返回不同的SOCKFD的值。这个不同的值和建立SOCKET 时生成的SOCKFD还是不同的。服务器与客户端之间的通信就是在这些不同的SOCKFD上进行的。
+
+在服务器端，socket()返回的套接字用于监听（listen）和接受（accept）客户端的连接请求。这个套接字不能用于与客户端之间发送和接收数据。accept()接受一个客户端的连接请求，并返回一个新的套接字。所谓“新的”就是说这个套接字与socket()返回的用于监听和接受客户端的连接请求的套接字不是同一个套接字。与本次接受的客户端的通信是通过在这个新的套接字上发送和接收数据来完成的。
+
+再次调用accept()可以接受下一个客户端的连接请求，并再次返回一个新的套接字（与socket()返回的套接字、之前accept()返回的套接字都不同的新的套接字）。这个新的套接字用于与这次接受的客户端之间的通信。假设一共有3个客户端连接到服务器端。那么在服务器端就一共有4个套接字：第1个是socket()返回的、用于监听的套接字；其余3个是分别调用3次accept()返回的不同的套接字。如果已经有客户端连接到服务器端，不再需要监听和接受更多的客户端连接的时候，可以关闭由socket()返回的套接字，而不会影响与客户端之间的通信。当某个客户端断开连接、或者是与某个客户端的通信完成之后，服务器端需要关闭用于与该客户端通信的套接字
+
+36、 socket建立连接之后，可以用read和write函数
+	ssize_t write(int fd, const void*buf,size_t nbytes);
+	write函数将buf中的nbytes字节内容写入文件描述符fd.成功时返回写的字节数.失败时返
+	
+	ssize_t read(int fd,void *buf,size_t nbyte) 
+	read函数是负责从fd中读取内容.当读成功 时,read返回实际所读的字节数
+
+37、理一下大致流程
+	1、建立服务端socket
+	2、bind
+	3、listen
+	4、select等待有链接建立
+	5、accept，返回客户端的socket fd
+	6、建立clent thread
+	7、然后就是socket链接建立，然后就可以直接read 这个fd，把http协议发过来的数据读到iobuffer，然后再拷贝到buffer里面
+	8、strstr来获取buffer里面存的数是什么，根据不同的消息执行不同的流程，比如snap，或者stream等

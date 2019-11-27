@@ -314,34 +314,35 @@ typedef struct {
 					while(pcontext->videoIn->streamingState == STREAMING_PAUSED) {
 						usleep(1); // maybe not the best way so FIXME
 					}
-				FD_ZERO(&rd_fds);
-				FD_SET(pcontext->videoIn->fd, &rd_fds);
+					FD_ZERO(&rd_fds);
+					FD_SET(pcontext->videoIn->fd, &rd_fds);
 
-				FD_ZERO(&ex_fds);
-				FD_SET(pcontext->videoIn->fd, &ex_fds);
+					FD_ZERO(&ex_fds);
+					FD_SET(pcontext->videoIn->fd, &ex_fds);
 
-				FD_ZERO(&wr_fds);
-				FD_SET(pcontext->videoIn->fd, &wr_fds);
-				select(pcontext->videoIn->fd + 1, &rd_fds, &wr_fds, &ex_fds, &tv);//select函数监听fd接收状态，写入状态，错误状态，设置timeout时间
-					else if (sel == 0）如果超时
-						setResolution(pcontext->videoIn, pcontext->videoIn->width, pcontext->videoIn->height)//？？？？？？？
-				FD_ISSET(pcontext->videoIn->fd, &rd_fds
-					uvcGrab(pcontext->videoIn)//抓取一帧照片
-						xioctl(vd->fd, VIDIOC_DQBUF, &vd->buf); //dequeue buffer  VIDIOC_DQBUF 命令向驱动获取已经存放有视频数据的缓存  驱动出队
-						memset(&vd->buf, 0, sizeof(struct v4l2_buffer));
-						vd->buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-						vd->buf.memory = V4L2_MEMORY_MMAP;
-							case V4L2_PIX_FMT_MJPEG:
-								memcpy(vd->tmpbuffer, vd->mem[vd->buf.index], vd->buf.bytesused);//vd->mem是内存映射到了vd->buf,截图的时候把这段内存直接拷贝到tmpbuffer
-								vd->tmptimestamp = vd->buf.timestamp; //这个v4l2里面的buf还自带tmestamp？？？
-						xioctl(vd->fd, VIDIOC_QBUF, &vd->buf);//requeue buffer   VIDIOC_QBUF 命令向驱动传递应用程序已经处理完的缓存，即将缓存加入空闲可捕获视频的队列
+					FD_ZERO(&wr_fds);
+					FD_SET(pcontext->videoIn->fd, &wr_fds);
+					select(pcontext->videoIn->fd + 1, &rd_fds, &wr_fds, &ex_fds, &tv);//select函数监听fd接收状态，写入状态，错误状态，设置timeout时间，不断地select，监听，直到采到数据帧
+						else if (sel == 0）如果超时
+							setResolution(pcontext->videoIn, pcontext->videoIn->width, pcontext->videoIn->height)//？？？？？？？
+					FD_ISSET(pcontext->videoIn->fd, &rd_fds
+						uvcGrab(pcontext->videoIn)//抓取一帧照片
+							xioctl(vd->fd, VIDIOC_DQBUF, &vd->buf); //dequeue buffer  VIDIOC_DQBUF 命令向驱动获取已经存放有视频数据的缓存  驱动出队
+							memset(&vd->buf, 0, sizeof(struct v4l2_buffer));
+							vd->buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+							vd->buf.memory = V4L2_MEMORY_MMAP;
+								case V4L2_PIX_FMT_MJPEG:
+									memcpy(vd->tmpbuffer, vd->mem[vd->buf.index], vd->buf.bytesused);//vd->mem是内存映射到了vd->buf,截图的时候把这段内存直接拷贝到tmpbuffer
+									vd->tmptimestamp = vd->buf.timestamp; //这个v4l2里面的buf还自带tmestamp？？？
+							xioctl(vd->fd, VIDIOC_QBUF, &vd->buf);//requeue buffer   VIDIOC_QBUF 命令向驱动传递应用程序已经处理完的缓存，即将缓存加入空闲可捕获视频的队列
 						pthread_mutex_lock(&pglobal->in[pcontext->id].db); //每一个input结构体都有一把线程锁
 						//compress_image_to_jpeg  如果摄像头是YUV格式的话，下面进行YUV到JPEG的转换
+						//这里上锁，然后要把数据帧从pcontext->videoIn->tmpbuffer或者pcontext->videoIn->framebuffer拷贝到global->in[id].buf,这样在output插件里面会去这个buf里面把数据帧考走
 						pglobal->in[pcontext->id].size =memcpy_picture(pglobal->in[pcontext->id].buf, pcontext->videoIn->tmpbuffer, pcontext->videoIn->tmpbytesused);//然后从tmpbuffer又拷贝到input.buf 这里面可能涉及到霍夫曼变化？？
 						pglobal->in[pcontext->id].timestamp = pcontext->videoIn->tmptimestamp;
-						pthread_cond_broadcast(&pglobal->in[pcontext->id].db_update);   //这个好像是要唤醒其他阻塞线程？？？？？解锁所有包含条件变量db_update的线程，感觉像是http的线程
+						pthread_cond_broadcast(&pglobal->in[pcontext->id].db_update);   //这个好像是要唤醒其他阻塞线程？？？？？解锁所有包含条件变量db_update的线程，感觉像是http的线程，唤醒pthread_cond_wait线程
 						pthread_mutex_unlock(&pglobal->in[pcontext->id].db);
-    ret = xioctl(vd->fd, VIDIOC_DQBUF, &vd->buf);				
+				}				
 	pthread_detach(pctx->threadID);//子线程和主线程分离，分开运行，有点像子进程和父进程fork之后，父进程还是跑自己的，子进程也继续跑
 
 
@@ -481,6 +482,47 @@ struct v4l2_buffer {
 								iobuf->level = read(fd, &iobuf->buffer, IO_BUFFER) //前面用select了，并且socket连接已经建立，这里直接read
 								memmove(iobuf->buffer + (IO_BUFFER - iobuf->level), iobuf->buffer, iobuf->level);//克服拷贝位置重叠的问题，对齐到buffer数组末尾
 						// http://192.168.1.17:8080/?action=stream
+						if(strstr(buffer, "GET /?action=snapshot") != NULL)
+							req.type = A_SNAPSHOT;
+						if((strstr(buffer, "GET /cam") != NULL) && (strstr(buffer, ".jpg") != NULL)
+							req.type = A_SNAPSHOT_WXP;
+						if(strstr(buffer, "POST /stream")
+							req.type = A_STREAM;
+						if(strstr(buffer, "GET /?action=stream")
+							req.type = A_STREAM;
+						if((strstr(buffer, "GET /input") != NULL) && (strstr(buffer, ".json") != NULL)
+							req.type = A_INPUT_JSON;
+						switch(req.type)
+						{
+						case A_SNAPSHOT:
+							send_snapshot(&lcfd, input_number);
+								pthread_mutex_lock(&pglobal->in[input_number].db);  //这个会阻塞在这里等锁
+								pthread_cond_wait(&pglobal->in[input_number].db_update, &pglobal->in[input_number].db); //拿到锁之后到了这里，会先解锁，然后等条件变量con，也就是等camthread这个input线程的broadcast，然后再上锁
+								//input插件的camthread线程会不断循环抓取数据帧，抓到一帧数据，就broadcast一下条件变量，然后解锁，其他线程里面在wait的就可以拿到锁，开始行动了
+								timestamp = pglobal->in[input_number].timestamp;
+								memcpy(frame, pglobal->in[input_number].buf, frame_size);
+								pthread_mutex_unlock(&pglobal->in[input_number].db);
+								char buffer[BUFFER_SIZE] = {0};
+								write(context_fd->fd, buffer, strlen(buffer)  //发送header
+								write(context_fd->fd, frame, frame_size)   //发送数据帧，注意这里通过tcp/ip向buffer里面写数据，用的是write，对应读buffer上来是read
+						case A_STREAM
+							send_stream(&lcfd, input_number);
+								write(context_fd->fd, buffer, strlen(buffer)
+								while(!pglobal->stop) {
+								pthread_mutex_lock(&pglobal->in[input_number].db);
+								pthread_cond_wait(&pglobal->in[input_number].db_update, &pglobal->in[input_number].db);//这样就同步上了，input那边cam线程采到一帧数据，释放条件变量，这边就收到，上锁，开始往下走
+								timestamp = pglobal->in[input_number].timestamp;
+								memcpy(frame, pglobal->in[input_number].buf, frame_size);
+								pthread_mutex_unlock(&pglobal->in[input_number].db);
+								write(context_fd->fd, buffer, strlen(buffer) //sending intemdiate header
+								write(context_fd->fd, frame, frame_size)  //sending frame
+								write(context_fd->fd, buffer, strlen(buffer) //sending boundary
+								}
+						.......................// 其他的一堆case处理
+						close(lcfd.fd);
+						free_request(&req); //到这里就可以离开client thread了，如果新的监听client来到，再启动新的client thread
+
+						}
 				pthread_detach(client);
 				}
 				pthread_cleanup_pop(1);
